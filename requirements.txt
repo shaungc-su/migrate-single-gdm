@@ -1,0 +1,6 @@
+psycopg2-binary
+requests_aws4auth
+requests_futures
+pyyaml
+six
+boto3
