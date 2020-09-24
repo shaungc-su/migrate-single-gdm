@@ -103,8 +103,15 @@ class DynamoDB:
             return None
     
     def reset(self):
-        path = pathlib.Path('../../gci-vci-serverless/.dynamodb/data/shared-local-instance.db')
-        user_migrated_data_path = path.parent.parent.joinpath('data_backup/shared-local-instance__user_migrated.db')
-        os.remove(path.absolute())
-        shutil.copy(user_migrated_data_path, path)
-        self.logger.info('Database reset complete')
+        path = pathlib.Path('../gci-vci-aws/gci-vci-serverless/.dynamodb/data/shared-local-instance.db')
+        user_migrated_data_path = pathlib.Path(path.parent.parent.joinpath('data_backup/shared-local-instance__user_migrated.db'))
+        if path.exists():
+            os.remove(path.absolute())
+            self.logger.info('removed existing db data')
+            if user_migrated_data_path.exists():
+                shutil.copy(user_migrated_data_path, path)
+                self.logger.info('Database reset complete')
+            else:
+                self.logger.error(f'Database reset failed: {user_migrated_data_path.absolute()} does not exist')
+        else:
+            self.logger.error(f'Database reset failed: {path.absolute()} does not exist')

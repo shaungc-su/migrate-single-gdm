@@ -1,5 +1,13 @@
 # please run this script at the same directory from terminal
-GCI_VCI_SERVERLESS_RELATIVE_PATH=../gci-vci-aws/gci-vci-serverless/src
+
+eval $(egrep -v '^#' .env | xargs)
+
+if [ -z "${GCI_VCI_SERVERLESS_RELATIVE_PATH}"]; then
+    echo "Environment variant GCI_VCI_SERVERLESS_RELATIVE_PATH is required. Please specofy it in .env"
+    return
+else
+    echo "GCI_VCI_SERVERLESS_RELATIVE_PATH is ${GCI_VCI_SERVERLESS_RELATIVE_PATH}"
+fi
 
 # if any error occur, abort immediately
 set -e

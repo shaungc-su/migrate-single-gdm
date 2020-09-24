@@ -1,8 +1,10 @@
 import json
 from pathlib import Path
+import os
+
 
 class SchemaManager:
-    SCHEMA_DIRECTORY = Path('../../gci-vci-serverless/src/models')
+    SCHEMA_DIRECTORY = Path(os.environ.get('GCI_VCI_SERVERLESS_RELATIVE_PATH', ''))
     def __init__(self):
         if not self.SCHEMA_DIRECTORY.is_dir():
             raise Exception(f'ERROR: Schema directory not found: `{self.SCHEMA_DIRECTORY.absolute()} is not a directory`')
