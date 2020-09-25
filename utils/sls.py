@@ -11,15 +11,21 @@ from utils.relation_linkage import get_pk_or_rid
 
 
 # item_type -> endpoint
-ENDPOINTS = {
+POST_ENDPOINTS = {
     'gdm': '/gdms',
     'annotation': '/annotations',
+
+    'user': '/users',
     'article': '/articles',
     'disease': '/diseases',
     'gene': '/genes',
-    'family': '/families',
+    'evidenceScore': '/evidencescore',
+
     'individual': '/individuals',
+    'family': '/families',
+    'group': '/groups',
     'experimental': '/experimental',
+    'caseControl': '/casecontrol',
 }
 
 class Serverless:
@@ -49,7 +55,7 @@ class Serverless:
             'body': processed_parent
         }
         res = requests.post(
-            f'{self.BASE_URL}{ENDPOINTS[item_type]}',
+            f'{self.BASE_URL}{POST_ENDPOINTS[item_type]}',
             auth=self.auth,
             data=json.dumps(data)
         )

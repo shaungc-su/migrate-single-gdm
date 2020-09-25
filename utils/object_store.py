@@ -52,7 +52,13 @@ class ObjectStoreManager:
             remain_schema_name_set = set(self.store.keys()) - prioritized_schema_name_set
             all_objects = []
 
-            for schema_name in [*prioritized_schema_list, *remain_schema_name_set]:
+            # construct the list
+            ordered_schema_name_list = [*prioritized_schema_list, *remain_schema_name_set]
+
+            # filter out schema which doesn't exist in data
+            ordered_schema_name_list = list(filter(lambda schema_name: schema_name in self.store, ordered_schema_name_list))
+
+            for schema_name in ordered_schema_name_list:
                 all_objects = [*all_objects, *[value for value in self.store[schema_name]['byRid'].values()]]
             
             return all_objects

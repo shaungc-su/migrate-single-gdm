@@ -21,14 +21,17 @@ sls = Serverless(logger)
 db = DynamoDB(logger)
 relation_linkage_transformer = RelationLinkageTransformer(logger)
 
-def getConnection(config_data,type):
+def getConnection(config_data):
+    type = 'local'
     logger.info('Getting connection object')
     if (type == 'local'):
         return psycopg2.connect(user=config_data['db']['local']['user'],
+                                password=config_data['db']['local']['password'],
                                 host=config_data['db']['local']['host'],
                                 port=config_data['db']['local']['port'],
                                 database=config_data['db']['local']['database'])
     elif (type == 'ec2'):
+        logger.debug(f"Connecting to ec2 postgres, psw={config_data['db']['ec2']['password']}")
         return psycopg2.connect(user=config_data['db']['ec2']['user'],
                                 password=config_data['db']['ec2']['password'],
                                 host=config_data['db']['ec2']['host'],
@@ -42,7 +45,8 @@ def sql_fetchall(item_type, rid, connection):
     sql_query = '''
         SELECT item_type, rownum, item FROM (
             SELECT row_number() over(order by rid, sid) as rownum,
-            item_type, item
+            item_type, 
+            item
             FROM migrate_recent_items 
             WHERE item_type=%s AND rid=%s
         )a
@@ -79,7 +83,7 @@ def generic_transformation(parent):
     return new_parent
 
 def collect_gdm_related_objects(gdm_rid):
-    connection = getConnection(config_data, 'ec2')
+    connection = getConnection(config_data)
 
     # a dfs traverse through the relation graph
     store = {}
@@ -108,12 +112,12 @@ def collect_gdm_related_objects(gdm_rid):
                     # this means objects are already cached by object store manager
                     # hence no need to sql fetch
                     logger.info(f'sql processed #{processed_counter} (skipped due to relation link already transformed)')
-                    connection = getConnection(config_data, 'ec2')
+                    connection = getConnection(config_data)
                     continue
                 raise
 
             if len(items) != 1:
-                raise Exception(f'{item_type} queried by PK but returned not one: {items}')
+                raise Exception(f'{item_type} queried by PK/rid `{related_rid}` but returned not one: {items}')
             parent = items[0]
             logger.debug(f'fetched items = {parent["item_type"]} {get_pk_or_rid(parent)}')
 
@@ -155,7 +159,7 @@ def collect_gdm_related_objects(gdm_rid):
         processed_counter += 1
         logger.info(f'sql processed #{processed_counter}')
     
-    object_store_manager.save()
+        object_store_manager.save()
 
     connection.close()
 
@@ -169,8 +173,10 @@ def transform_relation_links():
 
 def post_related_objects():
     items = object_store_manager.getAll(prioritized_schema_list=[
-        'user', 'disease', 'article', 'gene',
-        'individual', 'family', 'experimental',
+        # create objects that does not have relationship first
+        'user', 'disease', 'article', 'gene', 'evidenceScore',
+        # create evidence objects
+        'individual', 'family', 'group', 'experimental', 'caseControl',
         # gdm should be the last, so that related fields can populate properly
         'annotation', 'gdm'
     ])
