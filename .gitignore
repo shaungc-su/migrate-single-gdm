@@ -1,5 +1,8 @@
 run.sh
 gdm_*.json
+
+backup_data
+postgres_data
 config_recent.yaml
 
 # Created by https://www.toptal.com/developers/gitignore/api/python
