@@ -12,16 +12,20 @@ from utils.relation_linkage import RelationLinkageTransformer, get_pk_or_rid
 # setup(name='gcivcisls', version='1.0', packages=find_packages())
 from models.schema_reader import is_singular_relational_field, is_plural_relational_field
 
-
-GDM_RID = '1c767179-c29a-483f-9cab-791a0e7960d4'
+# RELN - Rao's largest gdm
+GDM_RID = 'a6c35a84-e7c2-4b8c-9697-afb4b07e2521'
+# Howard's
+# GDM_RID = '1c767179-c29a-483f-9cab-791a0e7960d4'
+with open('config_recent.yaml', 'r') as stream:
+    config_data = yaml.load(stream, Loader=yaml.FullLoader)
 logger = Logger()
 schema_manager = SchemaManager()
 object_store_manager = ObjectStoreManager(gdm_rid=GDM_RID)
-sls = Serverless(logger)
+sls = Serverless(logger, base_url=config_data['endpoint']['url'])
 db = DynamoDB(logger)
 relation_linkage_transformer = RelationLinkageTransformer(logger)
 
-def getConnection(config_data):
+def getConnection():
     type = 'local'
     logger.info('Getting connection object')
     if (type == 'local'):
@@ -83,7 +87,7 @@ def generic_transformation(parent):
     return new_parent
 
 def collect_gdm_related_objects(gdm_rid):
-    connection = getConnection(config_data)
+    connection = getConnection()
 
     # a dfs traverse through the relation graph
     store = {}
@@ -112,7 +116,7 @@ def collect_gdm_related_objects(gdm_rid):
                     # this means objects are already cached by object store manager
                     # hence no need to sql fetch
                     logger.info(f'sql processed #{processed_counter} (skipped due to relation link already transformed)')
-                    connection = getConnection(config_data)
+                    connection = getConnection()
                     continue
                 raise
 
@@ -183,7 +187,10 @@ def post_related_objects():
     logger.debug(f'n = {len(items)}')
 
     for index, item in enumerate(items):
-        db_item_already = db.get(item)
+        # use sls to GET
+        db_item_already = sls.get(item)
+        # use dynamodb to GET
+        # db_item_already = db.get(item)
         if not db_item_already:
             res = sls.post(item)
             logger.info(f'POST {res.status_code} {item["item_type"]}({get_pk_or_rid(item)}) processed {index+1}/{len(items)} item')
@@ -192,9 +199,6 @@ def post_related_objects():
         
 if __name__ == "__main__":
     # db.reset()
-    
-    with open('config_recent.yaml', 'r') as stream:
-        config_data = yaml.load(stream, Loader=yaml.FullLoader)
     
     collect_gdm_related_objects(gdm_rid=GDM_RID)
     transform_relation_links()
