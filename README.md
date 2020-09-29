@@ -43,7 +43,7 @@ queries:
 ```
 
 - If you are considering setup a local postgres with production data, you can refer to the section "How to prepare a postgres with legacy production data" below.
-- Make sure if you're using postgres on AWS RDS, cha
+- Make sure if you're using postgres on AWS RDS, change the following in `migrate_single_gdm.py`
 
 ```py
 def getConnection():
