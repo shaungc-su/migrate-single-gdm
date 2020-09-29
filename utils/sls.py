@@ -29,13 +29,15 @@ POST_ENDPOINTS = {
 }
 
 class Serverless:
-    BASE_URL = 'http://0.0.0.0:3000'
-    def __init__(self, logger):
+    def __init__(self, logger, base_url='http://0.0.0.0:3000'):
         self.auth=AWS4Auth(os.getenv('AWS_ACCESS_KEY_ID'), \
             os.getenv('AWS_SECRET_ACCESS_KEY'),'us-west-2', \
                 'execute-api')
 
         self.logger = logger
+        self.BASE_URL = base_url
+
+        self.logger.info(f'Will connect to serverless endpoint {base_url}')
     
     def remove_empty_fields(self, parent):
         processed_parent = {**parent}
@@ -44,8 +46,39 @@ class Serverless:
                 del processed_parent[field_name]
             elif isinstance(field_value, dict):
                 processed_parent[field_name] = self.remove_empty_fields(field_value)
+            elif isinstance(field_value, list):
+                processed_parent[field_name] = [self.remove_empty_fields(list_item) if isinstance(list_item, dict) else list_item for list_item in field_value if field_value != '']
         
         return processed_parent
+    
+    def get(self, parent):
+        item_type = parent['item_type']
+        res = requests.get(f'{self.BASE_URL}{POST_ENDPOINTS[item_type]}/{get_pk_or_rid(parent)}', auth=self.auth)
+        if res.status_code == 404:
+            return None
+        
+        if not res.ok:
+            self.logger.error(res.text)
+            res.raise_for_status()
+        
+        if not res.text:
+            raise Exception(f'GetError: {res.status_code} {item_type} {get_pk_or_rid(parent)} empty response, parent = {parent}')
+            
+        data = res.json()
+
+        if not data:
+            raise Exception(f'GetError: {res.status_code} {item_type} {get_pk_or_rid(parent)} empty json body, parent = {parent}')
+        
+        if not isinstance(data, dict):
+            raise Exception(f'GetError: {res.status_code} {item_type} {get_pk_or_rid(parent)} json body is not object (dict), response = {data}')
+
+        # some endpoints like disease, gene, etc, will return data regardless of object exist in db or not
+        # but we can tell if it's in db by checking if PK is assigned
+        if not 'PK' in data:
+            self.logger.debug(f'GET {item_type} responded with data but no PK, so no object in db yet')
+            return None
+        
+        return data
         
     def post(self, parent):
         processed_parent = self.remove_empty_fields(parent)
