@@ -10,12 +10,12 @@ from utils.relation_linkage import RelationLinkageTransformer, get_pk_or_rid
 # needs to acticate venv, navigate to `gci-vci-serverless/src`, create a setup.py with content below, and run `pip install .`
 # from setuptools import setup, find_packages
 # setup(name='gcivcisls', version='1.0', packages=find_packages())
-from models.schema_reader import is_singular_relational_field, is_plural_relational_field
+from models.schema_reader import is_singular_relational_field, is_plural_relational_field, parse_schema_string
 
 # RELN - Rao's largest gdm
-GDM_RID = 'a6c35a84-e7c2-4b8c-9697-afb4b07e2521'
+# GDM_RID = 'a6c35a84-e7c2-4b8c-9697-afb4b07e2521'
 # Howard's
-# GDM_RID = '1c767179-c29a-483f-9cab-791a0e7960d4'
+GDM_RID = '1c767179-c29a-483f-9cab-791a0e7960d4'
 with open('config_recent.yaml', 'r') as stream:
     config_data = yaml.load(stream, Loader=yaml.FullLoader)
 logger = Logger()
@@ -26,7 +26,7 @@ db = DynamoDB(logger)
 relation_linkage_transformer = RelationLinkageTransformer(logger)
 
 def getConnection():
-    type = 'local'
+    type = 'ec2'
     logger.info('Getting connection object')
     if (type == 'local'):
         return psycopg2.connect(user=config_data['db']['local']['user'],
@@ -137,27 +137,29 @@ def collect_gdm_related_objects(gdm_rid):
                 # get schema e.g. gdm.diseae = { $schema: disease, type: object }
                 related_field_schema = schema[field_name]
                 if is_singular_relational_field(related_field_schema):
+                    related_item_type, _ = parse_schema_string(related_field_schema['$schema'])
                     object_stack.append({
-                        'item_type': related_field_schema['$schema'],
+                        'item_type': related_item_type,
                         'rid': parent[field_name]
                     })
                     relation_linkage_transformer.add(
                         parent_item_type=item_type,
                         parent_rid=parent['rid'],
                         parent_field_name=field_name,
-                        relation_item_type=related_field_schema['$schema']
+                        relation_item_type=related_item_type
                     )
                 elif is_plural_relational_field(related_field_schema):
+                    related_item_type, _ = parse_schema_string(related_field_schema['items']['$schema'])
                     for related_rid in parent[field_name]:
                         object_stack.append({
-                            'item_type': related_field_schema['items']['$schema'],
+                            'item_type': related_item_type,
                             'rid': related_rid
                         })
                     relation_linkage_transformer.add(
                         parent_item_type=item_type,
                         parent_rid=parent['rid'],
                         parent_field_name=field_name,
-                        relation_item_type=related_field_schema['items']['$schema']
+                        relation_item_type=related_item_type
                     )
                     
         processed_counter += 1
@@ -179,6 +181,8 @@ def post_related_objects():
     items = object_store_manager.getAll(prioritized_schema_list=[
         # create objects that does not have relationship first
         'user', 'disease', 'article', 'gene', 'evidenceScore',
+        # VCI objects
+        'variant',
         # create evidence objects
         'individual', 'family', 'group', 'experimental', 'caseControl',
         # gdm should be the last, so that related fields can populate properly

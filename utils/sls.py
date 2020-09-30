@@ -26,6 +26,8 @@ POST_ENDPOINTS = {
     'group': '/groups',
     'experimental': '/experimental',
     'caseControl': '/casecontrol',
+
+    'variant': '/variants'
 }
 
 class Serverless:
