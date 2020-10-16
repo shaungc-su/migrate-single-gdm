@@ -12,18 +12,12 @@ from utils.relation_linkage import RelationLinkageTransformer, get_pk_or_rid
 # setup(name='gcivcisls', version='1.0', packages=find_packages())
 from models.schema_reader import is_singular_relational_field, is_plural_relational_field, parse_schema_string
 
-# RELN - Rao's largest gdm
-# GDM_RID = 'a6c35a84-e7c2-4b8c-9697-afb4b07e2521'
-# Howard's
-GDM_RID = '1c767179-c29a-483f-9cab-791a0e7960d4'
 with open('config_recent.yaml', 'r') as stream:
     config_data = yaml.load(stream, Loader=yaml.FullLoader)
 logger = Logger()
 schema_manager = SchemaManager()
-object_store_manager = ObjectStoreManager(gdm_rid=GDM_RID)
 sls = Serverless(logger, base_url=config_data['endpoint']['url'])
 db = DynamoDB(logger)
-relation_linkage_transformer = RelationLinkageTransformer(logger)
 
 def getConnection():
     type = 'ec2'
@@ -70,12 +64,12 @@ def sql_fetchall(item_type, rid, connection):
         connection.close()
         raise
 
-def generic_transformation(parent):
+def generic_transformation(gdm_rid, parent):
     new_parent = {**parent}
     item_type = parent['item_type']
 
     if item_type == 'annotation':
-        new_parent['associatedGdm'] = GDM_RID
+        new_parent['associatedGdm'] = gdm_rid
 
     # article, disease and gene PK will be handled at sls controller level when create()
     # so no need to transform (i.e. rid->PK, etc)
@@ -86,7 +80,7 @@ def generic_transformation(parent):
     
     return new_parent
 
-def collect_gdm_related_objects(gdm_rid):
+def collect_gdm_related_objects(gdm_rid, object_store_manager, relation_linkage_transformer):
     connection = getConnection()
 
     # a dfs traverse through the relation graph
@@ -126,7 +120,7 @@ def collect_gdm_related_objects(gdm_rid):
             logger.debug(f'fetched items = {parent["item_type"]} {get_pk_or_rid(parent)}')
 
             # store it (the normalized form in postgres)
-            parent = generic_transformation(parent)
+            parent = generic_transformation(gdm_rid, parent)
             object_store_manager.insert(parent)
 
         schema = schema_manager.read_schema_from_file(item_type)
@@ -169,7 +163,7 @@ def collect_gdm_related_objects(gdm_rid):
 
     connection.close()
 
-def transform_relation_links():
+def transform_relation_links(object_store_manager, relation_linkage_transformer):
     '''
         If a schema's PK is transformed (e.g. disease: uuid -> diseaseId),
         transform all references in other objects accordingly
@@ -177,10 +171,10 @@ def transform_relation_links():
     relation_linkage_transformer.processAll(object_store_manager)
     object_store_manager.save()
 
-def post_related_objects():
+def post_related_objects(object_store_manager):
     items = object_store_manager.getAll(prioritized_schema_list=[
         # create objects that does not have relationship first
-        'user', 'disease', 'article', 'gene', 'evidenceScore',
+        'user', 'disease', 'article', 'gene', 'evidenceScore', 'provisionalClassification',
         # VCI objects
         'variant',
         # create evidence objects
@@ -200,10 +194,21 @@ def post_related_objects():
             logger.info(f'POST {res.status_code} {item["item_type"]}({get_pk_or_rid(item)}) processed {index+1}/{len(items)} item')
         else:
             logger.info(f'POST skipping {item["item_type"]}({get_pk_or_rid(item)}) processed {index+1}/{len(items)} item')
-        
+
+def single_migrate(gdm_rid):
+    object_store_manager = ObjectStoreManager(gdm_rid=gdm_rid)
+    relation_linkage_transformer = RelationLinkageTransformer(logger)
+
+    collect_gdm_related_objects(gdm_rid=gdm_rid, object_store_manager=object_store_manager, relation_linkage_transformer=relation_linkage_transformer)
+    transform_relation_links(object_store_manager=object_store_manager, relation_linkage_transformer=relation_linkage_transformer)
+    post_related_objects(object_store_manager)
+
 if __name__ == "__main__":
     # db.reset()
+    # RELN - Rao's largest gdm
+    RELN_GDM_RID = 'a6c35a84-e7c2-4b8c-9697-afb4b07e2521'
+    single_migrate(RELN_GDM_RID)
+    # Howard's
+    HO_GDM_RID = '1c767179-c29a-483f-9cab-791a0e7960d4'
+    single_migrate(HO_GDM_RID)
     
-    collect_gdm_related_objects(gdm_rid=GDM_RID)
-    transform_relation_links()
-    post_related_objects()
