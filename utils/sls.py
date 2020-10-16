@@ -27,7 +27,9 @@ POST_ENDPOINTS = {
     'experimental': '/experimental',
     'caseControl': '/casecontrol',
 
-    'variant': '/variants'
+    'variant': '/variants',
+
+    'provisionalClassification': '/provisional-classifications'
 }
 
 class Serverless:
