@@ -205,10 +205,15 @@ def single_migrate(gdm_rid):
 
 if __name__ == "__main__":
     # db.reset()
+    
     # RELN - Rao's largest gdm
     RELN_GDM_RID = 'a6c35a84-e7c2-4b8c-9697-afb4b07e2521'
     single_migrate(RELN_GDM_RID)
     # Howard's
     HO_GDM_RID = '1c767179-c29a-483f-9cab-791a0e7960d4'
     single_migrate(HO_GDM_RID)
-    
+
+    # A hearing loss GDM that is approved, published and new provisional
+    # SYNE4
+    HEARING_LOSS_GDM_RID = '429e5749-b39c-4917-b7db-00268456c59d'
+    single_migrate(HEARING_LOSS_GDM_RID)
