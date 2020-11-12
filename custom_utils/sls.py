@@ -7,7 +7,7 @@ from boto3.dynamodb.conditions import Key, Attr
 import pathlib
 import shutil
 
-from utils.relation_linkage import get_pk_or_rid
+from custom_utils.relation_linkage import get_pk_or_rid
 
 
 # item_type -> endpoint
@@ -29,7 +29,11 @@ POST_ENDPOINTS = {
 
     'variant': '/variants',
 
-    'provisionalClassification': '/provisional-classifications'
+    'provisionalClassification': '/provisional-classifications',
+    'snapshot': '/snapshots',
+
+    'assessment': '/assessments',
+    'pathogenicity': '/pathogenicity'
 }
 
 class Serverless:
@@ -86,15 +90,27 @@ class Serverless:
         
     def post(self, parent):
         processed_parent = self.remove_empty_fields(parent)
-
         item_type = processed_parent['item_type']
+        
         data = {
             'body': processed_parent
         }
+        querysting_params = {}
+        if item_type == 'snapshot':
+            resourceParent = processed_parent.get('resourceParent', {})
+            if isinstance(resourceParent, dict) and len(resourceParent.keys()) == 1:
+                iterator = iter(resourceParent)
+                parent_type = next(iterator)
+            else:
+                raise Exception(f'PostServerPreparationError: cannot tell what parent type is for snapshot: {processed_parent}')
+            querysting_params['type'] = parent_type
+            querysting_params['action'] = ''
+
         res = requests.post(
             f'{self.BASE_URL}{POST_ENDPOINTS[item_type]}',
             auth=self.auth,
-            data=json.dumps(data)
+            data=json.dumps(data),
+            params=querysting_params
         )
         if not res.ok:
             # assume 422 error is duplicate PK object creation in db

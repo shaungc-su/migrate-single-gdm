@@ -1,6 +1,6 @@
 import pathlib
 import json
-from utils.relation_linkage import LINKAGE_TRANSFORM
+from custom_utils.relation_linkage import LINKAGE_TRANSFORM
 
 
 class ObjectStoreManager:
