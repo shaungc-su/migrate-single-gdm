@@ -2,7 +2,6 @@ import psycopg2
 import yaml
 import json
 import copy
-from custom_utils.schema import SchemaManager
 from custom_utils.logger import Logger
 from custom_utils.object_store import ObjectStoreManager
 from custom_utils.sls import Serverless, DynamoDB
@@ -18,7 +17,6 @@ from src.utils.dict import dictdeepget
 with open('config_recent.yaml', 'r') as stream:
     config_data = yaml.load(stream, Loader=yaml.FullLoader)
 logger = Logger()
-schema_manager = SchemaManager()
 sls = Serverless(logger, base_url=config_data['endpoint']['url'])
 db = DynamoDB(logger)
 
@@ -85,7 +83,6 @@ def generic_transformation(gdm_rid, parent, item_type=None):
     # while sls controller does transform PK / other fields correctly for us,
     # it does not transform reference to those objects reside in other objects
     # hence we need to do it ourself - the `RelationLinkageTransformer` handles it
-
     
     # snapshot also has to be treated specially
     if item_type == 'snapshot':
@@ -145,7 +142,6 @@ def collect_gdm_related_objects(gdm_rid, object_store_manager, relation_linkage_
             parent = generic_transformation(gdm_rid, parent, item_type=item_type)
             object_store_manager.insert(parent)
 
-        # schema = schema_manager.read_schema_from_file(item_type)
 
         Model = ModelSerializer._get_model(None, item_type)
         singular_dot_representation_keys, plural_dot_representation_keys = Model.get_dot_representation_keys()
@@ -160,37 +156,6 @@ def collect_gdm_related_objects(gdm_rid, object_store_manager, relation_linkage_
             Model.map_dot_representation_to_item_type['variantPathogenicity'] = 'pathogenicity'
 
         # visit related fields
-        # TODO: remove this
-        # for field_name, field_value in parent.items():
-        #     if field_name in schema:
-        #         # get schema e.g. gdm.diseae = { $schema: disease, type: object }
-        #         related_field_schema = schema[field_name]
-        #         if is_singular_relational_field(related_field_schema):
-        #             related_item_type, _ = parse_schema_string(related_field_schema['$schema'])
-        #             object_stack.append({
-        #                 'item_type': related_item_type,
-        #                 'rid': parent[field_name]
-        #             })
-        #             relation_linkage_transformer.add(
-        #                 parent_item_type=item_type,
-        #                 parent_rid=parent['rid'],
-        #                 parent_field_name=field_name,
-        #                 relation_item_type=related_item_type
-        #             )
-        #         elif is_plural_relational_field(related_field_schema):
-        #             related_item_type, _ = parse_schema_string(related_field_schema['items']['$schema'])
-        #             for related_rid in parent[field_name]:
-        #                 object_stack.append({
-        #                     'item_type': related_item_type,
-        #                     'rid': related_rid
-        #                 })
-        #             relation_linkage_transformer.add(
-        #                 parent_item_type=item_type,
-        #                 parent_rid=parent['rid'],
-        #                 parent_field_name=field_name,
-        #                 relation_item_type=related_item_type
-        #             )
-
         for dot_representation in singular_dot_representation_keys:
             parent_field_value = dictdeepget(parent, dot_representation)
             if not parent_field_value or not isinstance(parent_field_value, str):
