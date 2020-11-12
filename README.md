@@ -9,7 +9,7 @@ The scripts in this repo fetches old system data from postgres, and POST into DB
 4. Install standard dependencies. Run `pip install -r requirements.txt`
 5. Install dependencies of serverless code base. This will allow the script to reuse utilities from our gci/vci serverless code base.
     1. Make sure you're at root directory of this repo.
-    2. Configure `GCI_VCI_SERVERLESS_RELATIVE_PATH` in `.env` - point it to the `gci-vci-serverless/src` directory relative to this repo.
+    2. Configure `GCI_VCI_SERVERLESS_RELATIVE_PATH=...` in `.env` - point it to the `gci-vci-serverless` (its repo root) directory relative to this repo.
     3. Run `. ./install-gci-vci-serverless-code.sh`.
 
 ### Step 2. Get ready for AWS & Postgres
