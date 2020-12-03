@@ -2,10 +2,13 @@ import psycopg2
 import yaml
 import json
 import copy
+import pathlib
+from custom_utils.config import config_data
+from custom_utils.sql import getConnection
 from custom_utils.logger import Logger
 from custom_utils.object_store import ObjectStoreManager
-from custom_utils.sls import Serverless, DynamoDB
-from custom_utils.relation_linkage import RelationLinkageTransformer, get_pk_or_rid
+from custom_utils.sls import SLS, DYNAMODB
+from custom_utils.relation_linkage import RelationLinkageTransformer, get_pk_or_rid, is_snapshot, get_item_type
 
 # needs to acticate venv, navigate to `gci-vci-serverless/src`, create a setup.py with content below, and run `pip install .`
 # from setuptools import setup, find_packages
@@ -14,30 +17,9 @@ from src.models.schema_reader import is_singular_relational_field, is_plural_rel
 from src.models.item_type_serializer import ModelSerializer
 from src.utils.dict import dictdeepget
 
-with open('config_recent.yaml', 'r') as stream:
-    config_data = yaml.load(stream, Loader=yaml.FullLoader)
-logger = Logger()
-sls = Serverless(logger, base_url=config_data['endpoint']['url'])
-db = DynamoDB(logger)
-
-def getConnection():
-    type = 'ec2'
-    logger.info('Getting connection object')
-    if (type == 'local'):
-        return psycopg2.connect(user=config_data['db']['local']['user'],
-                                password=config_data['db']['local']['password'],
-                                host=config_data['db']['local']['host'],
-                                port=config_data['db']['local']['port'],
-                                database=config_data['db']['local']['database'])
-    elif (type == 'ec2'):
-        logger.debug(f"Connecting to ec2 postgres, psw={config_data['db']['ec2']['password']}")
-        return psycopg2.connect(user=config_data['db']['ec2']['user'],
-                                password=config_data['db']['ec2']['password'],
-                                host=config_data['db']['ec2']['host'],
-                                port=config_data['db']['ec2']['port'],
-                                database=config_data['db']['ec2']['database'])
-    else:
-        raise Exception("Bad instance type")
+logger = Logger
+sls = SLS
+db = DYNAMODB
 
 def sql_fetchall(item_type, rid, connection):
     if not (isinstance(item_type, str) and isinstance(rid, str)):
@@ -87,8 +69,40 @@ def generic_transformation(gdm_rid, parent, item_type=None):
     # snapshot also has to be treated specially
     if item_type == 'snapshot':
         new_parent['item_type'] = 'snapshot'
-        new_parent['PK'] = new_parent['uuid']
+        new_parent['PK'] = new_parent.get('uuid', new_parent['rid'])
+        
+        # assign PK and item_type by using graph traverse
 
+        stack = []
+        
+        gdm = new_parent['resourceParent'].get('gdm')
+        if gdm:
+            stack.append(gdm)
+            # gdm does not embed annotations, so we need to add them to our traverse stack manually
+            if gdm.get('annotations'):
+                stack.extend(gdm['annotations'])
+        resource = new_parent.get('resource')
+        if resource:
+            stack.append(resource)
+
+        while stack:
+            local_parent = stack.pop()
+
+            # skip string value which is already PK and not embedded, so no need to go in there do transform
+            if isinstance(local_parent, str):
+                continue
+
+            # assign values
+            local_parent['item_type'] = get_item_type(local_parent)
+            local_parent['PK'] = get_pk_or_rid(local_parent)
+
+            Model = ModelSerializer._get_model(None, local_parent['item_type'])
+            singular_dot_representation_keys, plural_dot_representation_keys = Model.get_dot_representation_keys()
+            for dot_representation in singular_dot_representation_keys:
+                stack.append(dictdeepget(local_parent, dot_representation))
+            for dot_representation in plural_dot_representation_keys:
+                stack.extend(dictdeepget(local_parent, dot_representation, []))
+                    
     return new_parent
 
 def collect_gdm_related_objects(gdm_rid, object_store_manager, relation_linkage_transformer):
@@ -131,16 +145,17 @@ def collect_gdm_related_objects(gdm_rid, object_store_manager, relation_linkage_
                 raise Exception(f'{item_type} queried by PK/rid `{related_rid}` but returned not one: {items}')
             parent = items[0]
             logger.debug(f'fetched items = {parent["item_type"]} {get_pk_or_rid(parent)}')
-
-            # store it (the normalized form in postgres)
-            parent = generic_transformation(gdm_rid, parent, item_type=item_type)
-            object_store_manager.insert(parent)
         else:
-            # in case the parent is embedded directly on its ancestor, like snapshot (in legacy db)
+            # in case the parent is embedded directly on its ancestor
+            # 
+            # but this is unlikely what we want - even like snapshot nested stored in associatedClassificationSnapshots (in legacy db),
+            # it does not have complete snapshot object, i.e. resourceParent is stripped off.
+            # so just query by uuid/rid/PK is preferrable, don't directly use the nested object
+            pass
 
-            # store it (the normalized form in postgres)
-            parent = generic_transformation(gdm_rid, parent, item_type=item_type)
-            object_store_manager.insert(parent)
+        # store it (the normalized form in postgres)
+        parent = generic_transformation(gdm_rid, parent, item_type=item_type)
+        object_store_manager.insert(parent)
 
 
         Model = ModelSerializer._get_model(None, item_type)
@@ -186,16 +201,19 @@ def collect_gdm_related_objects(gdm_rid, object_store_manager, relation_linkage_
                         'rid': related_rid
                     })
                 elif isinstance(related_rid, dict) and (
-                    # if the following field exists, we decide it's a snapshot object
-                    # that is directly embedded in its parent
-                    related_rid.get('resourceType') and related_rid.get('resourceId')
+                    is_snapshot(related_rid)
                 ):
                     # snapshot does not have rid nor item_type in legacy system
                     snapshot = related_rid
                     object_stack.append({
                         'item_type': related_item_type,
+                        
+                        # looks like some snapshot does not have rid
                         'rid': snapshot['uuid'],
-                        'object': snapshot
+
+                        # do not use nested snapshot - it does not have resourceParent - 
+                        # use its uuid/rid to query the actual 'complete' snapshot object in db
+                        # 'object': snapshot
                     })
                 else:
                     raise Exception(f'Error: array field item has invalid type (neither PK (str) or object (dict)) in {item_type}.{dot_representation}, related_rid={related_rid}')
@@ -208,9 +226,10 @@ def collect_gdm_related_objects(gdm_rid, object_store_manager, relation_linkage_
             )
 
         processed_counter += 1
-        logger.info(f'sql processed #{processed_counter}')
+        logger.info(f'sql processed #{processed_counter} (not saved yet)')
     
-        object_store_manager.save()
+    logger.info('saving all sql process results to file...')
+    object_store_manager.save()
 
     connection.close()
 
@@ -261,8 +280,9 @@ if __name__ == "__main__":
     # db.reset()
     
     # RELN - Rao's largest gdm
-    # RELN_GDM_RID = 'a6c35a84-e7c2-4b8c-9697-afb4b07e2521'
-    # single_migrate(RELN_GDM_RID)
+    # scale statistics: sql process 923, item to POST 327
+    RELN_GDM_RID = 'a6c35a84-e7c2-4b8c-9697-afb4b07e2521'
+    single_migrate(RELN_GDM_RID)
     
     # # Howard's
     # HO_GDM_RID = '1c767179-c29a-483f-9cab-791a0e7960d4'
@@ -274,5 +294,5 @@ if __name__ == "__main__":
     # single_migrate(HEARING_LOSS_GDM_RID)
 
     # For testing JIRA-365
-    SNAPSHOT_BUG_GDM_RID = '0683943f-da80-4a3c-8f9f-454d59040eb2'
-    single_migrate(SNAPSHOT_BUG_GDM_RID)
+    # SNAPSHOT_BUG_GDM_RID = '0683943f-da80-4a3c-8f9f-454d59040eb2'
+    # single_migrate(SNAPSHOT_BUG_GDM_RID)
