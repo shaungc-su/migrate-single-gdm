@@ -1,11 +1,15 @@
+import os
 import pathlib
 import json
+import traceback
 from custom_utils.relation_linkage import LINKAGE_TRANSFORM
+from custom_utils.logger import Logger
 
+THIS_FILE_DIR = os.path.dirname(os.path.realpath(__file__))
 
 class ObjectStoreManager:
     def __init__(self, gdm_rid):
-        self.filename = f'gdm_related_objects_{gdm_rid}.json'
+        self.filename = f'{THIS_FILE_DIR}/../.data/gdm_related_objects_{gdm_rid}.json'
         self.filepath = pathlib.Path(self.filename)
         if self.filepath.exists():
             with self.filepath.open('r') as f:
@@ -31,7 +35,16 @@ class ObjectStoreManager:
                 'byRid': {}
             }
         
-        self.store[parent['item_type']]['byRid'][parent['rid']] = parent
+        try:
+            self.store[parent['item_type']]['byRid'][parent['rid']] = parent
+        except Exception as e:
+            # snapshot has no `rid`, only uuid or the newly assigned PK
+            if parent['item_type'] == 'snapshot':
+                self.store[parent['item_type']]['byRid'][parent['uuid']] = parent
+            else:
+                Logger.error('Error while inserting into object store, parent =', parent)
+                raise e
+
         if parent['item_type'] in LINKAGE_TRANSFORM:
             self.store[parent['item_type']]['byPK'][parent[LINKAGE_TRANSFORM[parent['item_type']]]] = parent
 
