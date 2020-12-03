@@ -106,7 +106,7 @@ def generic_transformation(gdm_rid, parent, item_type=None):
     return new_parent
 
 def collect_gdm_related_objects(gdm_rid, object_store_manager, relation_linkage_transformer):
-    connection = getConnection()
+    connection = None
 
     # a dfs traverse through the relation graph
     store = {}
@@ -129,6 +129,8 @@ def collect_gdm_related_objects(gdm_rid, object_store_manager, relation_linkage_
         elif not parent:
             # fetch object from postgres
             try:
+                if not connection:
+                    connection = getConnection()
                 items = sql_fetchall(item_type, related_rid, connection)
             except psycopg2.Error as error:
                 if 'invalid input syntax for type uuid' in str(error):
@@ -230,8 +232,9 @@ def collect_gdm_related_objects(gdm_rid, object_store_manager, relation_linkage_
     
     logger.info('saving all sql process results to file...')
     object_store_manager.save()
-
-    connection.close()
+    
+    if connection:
+        connection.close()
 
 def transform_relation_links(object_store_manager, relation_linkage_transformer):
     '''
