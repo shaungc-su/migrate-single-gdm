@@ -99,7 +99,7 @@ It memories the diff between `all_variants.json`, and the variants in serverless
 
 ## Step 3: transform some item_type in legacy system
 - Connect to the postgres database `psql -U postgres -h <host> -d prod_09152020`
-- Thanks to [Rao's work](https://github.com/ClinGen/gci-vci-aws/blob/fix/migration/migration/src/migrate_recent_items_vw.sql), run the following to transform the item_types. **Make sure the right hand side of lines `WHEN r.item_type::text = ...`, the item_type should match that in new system**. This will create a virtual table `migrate_recent_items` with the transformed item_types, and we can run sql query against this table. The virtual table data is persistent.
+- Thanks to [Rao's work](https://github.com/ClinGen/gci-vci-aws/blob/dev/migration_prod/sql/migrate_recent_items.sql), run the following to transform the item_types. **Make sure the right hand side of lines `WHEN r.item_type::text = ...`, the item_type should match that in new system**. This will create a virtual table `migrate_recent_items` with the transformed item_types, and we can run sql query against this table. The virtual table data is persistent.
 ```sql
 -- public.migrate_recent_items source
 CREATE OR REPLACE VIEW public.migrate_recent_items
@@ -109,8 +109,16 @@ AS WITH all_recent_items AS (
                 CASE
                     WHEN r.item_type::text = 'extra_evidence'::text THEN 'curated-evidence'::character varying
                     WHEN r.item_type::text = 'provisional_variant'::text THEN 'provisional-variant'::character varying
-                    WHEN r.item_type::text = 'caseControl'::text THEN 'caseControl'::character varying
-                    WHEN r.item_type::text = 'evidenceScore'::text THEN 'evidenceScore'::character varying
+                    WHEN r.item_type::text = 'provisionalClassification'::text THEN 'provisional-classification'::character varying
+                    -- the following `caseControl` and `evidenceScore` was transformed as 
+                    -- all-lowercase in Rao's sql,
+                    -- which will affect the final generated table's column `item_type`.
+                    -- here we are keeping their `item_type` as-is in order to align with new system format
+                    -- but you can use Rao's sql script as long as you make sure the sql query 
+                    -- run by python script aligns with the transformed item_type
+                    --
+                    -- WHEN r.item_type::text = 'caseControl'::text THEN 'caseControl'::character varying
+                    -- WHEN r.item_type::text = 'evidenceScore'::text THEN 'evidenceScore'::character varying
                     ELSE r.item_type
                 END AS item_type,
             p_1.properties
