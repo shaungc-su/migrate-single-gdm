@@ -90,15 +90,15 @@ It memories the diff between `all_variants.json`, and the variants in serverless
 
 ## Step 1: prepare a postgres instance
 - Either on local or on AWS RDS, create a new postgres database instance.
-- Also create a database in the instance with name, e.g. `prod_09152020`.
+- Also create a database in the instance with name, e.g. `prod_12032020`.
 - If you are running AWS RDS database, make sure it is publicly accessible (go to db instance, press modify, and change the public accessibility setting), and the security group rules allows inbound rules of port `5432` and from any IP (or you can set to your IP your laptop network is currently using, ideally if your IP address provided by ISP is static, oftentime not though).
 
 ## Step 2: load production data from old website
-- Go into s3 and download the sql file from s3 bucket `gcivcihelio`, e.g. the file `pg-dump-2020-09-15.sql.gz`. Download and de-compress it.
-- Run `psql -U postgres -h <host> -d prod_09152020 -f <path to de-compressed sql file>`. The host is `localhost` if you're running local postgres, or in form of `db-instance-name.xxx.us-west-2.rds.amazonaws.com` if you're using AWS RDS.
+- Go into s3 and download the sql file from s3 bucket `gcivciforhelio`, e.g. the file `pg-dump-2020-12-03.sql.gz`. Download and de-compress it.
+- Run `psql -U postgres -h <host> -d prod_12032020 -f <path to de-compressed sql file>`. The host is `localhost` if you're running local postgres, or in form of `db-instance-name.xxx.us-west-2.rds.amazonaws.com` if you're using AWS RDS.
 
 ## Step 3: transform some item_type in legacy system
-- Connect to the postgres database `psql -U postgres -h <host> -d prod_09152020`
+- Connect to the postgres database `psql -U postgres -h <host> -d prod_12032020`
 - Thanks to [Rao's work](https://github.com/ClinGen/gci-vci-aws/blob/dev/migration_prod/sql/migrate_recent_items.sql), run the following to transform the item_types. **Make sure the right hand side of lines `WHEN r.item_type::text = ...`, the item_type should match that in new system**. This will create a virtual table `migrate_recent_items` with the transformed item_types, and we can run sql query against this table. The virtual table data is persistent.
 ```sql
 -- public.migrate_recent_items source
